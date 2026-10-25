@@ -68,15 +68,17 @@ haversine formula for great-circle distance between two lat/lon points:
 
 $$
 a = \sin^2\left(\frac{\Delta\phi}{2}\right) + \cos(\phi_1)\cos(\phi_2)\sin^2\left(\frac{\Delta\lambda}{2}\right)
-$$
-
-$$
 d = 2R \cdot \arcsin\left(\sqrt{a}\right)
 $$
 
-where $\phi$ is latitude, $\lambda$ is longitude (both in radians),
-$\Delta\phi$/$\Delta\lambda$ are the differences between the two points,
-and $R$ is Earth's radius (6,371,000m). Haversine is used instead of flat
+where
+
+- $\phi$ is the latitude (radians)
+- $\lambda$ is the longitude (radians)
+- $\Delta\phi$ and $\Delta\lambda$ are the delta between the two points
+- $R$ is Earth's radius (6,371,000m)
+
+Haversine is used instead of flat
 Euclidean distance on the raw lat/lon degrees because lines of longitude
 converge towards the poles --
 a given number of degrees of longitude covers less real-world distance the
