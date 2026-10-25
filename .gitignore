@@ -1,0 +1,26 @@
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+build/
+dist/
+.coverage
+htmlcov/
+
+# Editor/OS junk.
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Local runtime data: sqlite DB, Apple account session, anisette libs.
+# These contain Larry's location history and Apple auth state -- never commit them.
+/data/
+!/data/.gitkeep
+
+# docker-compose env overrides -- may hold FINDMY_AIRTAG_KEY_B64 etc.
+.env

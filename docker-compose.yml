@@ -1,0 +1,29 @@
+services:
+  location-service:
+    build: ./location-service
+    ports:
+      - "8001:8001"
+    environment:
+      FINDMY_MODE: ${FINDMY_MODE:-mock}
+      DB_PATH: /data/larry.db
+      POLL_INTERVAL_SECONDS: ${POLL_INTERVAL_SECONDS:-300}
+      FINDMY_ACCOUNT_STORE_PATH: /data/account.json
+      FINDMY_ANISETTE_LIBS_PATH: /data/ani_libs.bin
+      FINDMY_AIRTAG_KEY_B64: ${FINDMY_AIRTAG_KEY_B64:-}
+      TRIP_GAP_MINUTES: ${TRIP_GAP_MINUTES:-45}
+      HOME_LATITUDE: ${HOME_LATITUDE:-}
+      HOME_LONGITUDE: ${HOME_LONGITUDE:-}
+      HOME_RADIUS_METERS: ${HOME_RADIUS_METERS:-75}
+      MIN_CONFIDENCE: ${MIN_CONFIDENCE:-1}
+      MAX_HORIZONTAL_ACCURACY_METERS: ${MAX_HORIZONTAL_ACCURACY_METERS:-100}
+    volumes:
+      - ./data:/data
+
+  ui-service:
+    build: ./ui-service
+    ports:
+      - "8000:8000"
+    environment:
+      LOCATION_SERVICE_URL: http://location-service:8001
+    depends_on:
+      - location-service
