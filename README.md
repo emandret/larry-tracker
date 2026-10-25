@@ -71,7 +71,7 @@ a = \sin^2\left(\frac{\Delta\phi}{2}\right) + \cos(\phi_1)\cos(\phi_2)\sin^2\lef
 $$
 
 $$
-d = 2R \cdot \operatorname{asin}\left(\sqrt{a}\right)
+d = 2R \cdot \arcsin\left(\sqrt{a}\right)
 $$
 
 where $\phi$ is latitude, $\lambda$ is longitude (both in radians),
