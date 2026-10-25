@@ -67,8 +67,10 @@ trip is labelled `is_round_trip`: whether its _last_ point falls within
 haversine formula for great-circle distance between two lat/lon points:
 
 $$
-a = \sin^2\left(\frac{\Delta\phi}{2}\right) + \cos(\phi_1)\cos(\phi_2)\sin^2\left(\frac{\Delta\lambda}{2}\right) \\
-d = 2R \cdot \arcsin\left(\sqrt{a}\right)
+\begin{aligned}
+a &= \sin^2\left(\frac{\Delta\phi}{2}\right) + \cos(\phi_1)\cos(\phi_2)\sin^2\left(\frac{\Delta\lambda}{2}\right) \\
+d &= 2R \cdot \arcsin\left(\sqrt{a}\right)
+\end{aligned}
 $$
 
 where
