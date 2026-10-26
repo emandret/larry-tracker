@@ -83,16 +83,31 @@ def compute_trips(
     return trips
 
 
+def _path_distance_meters(points: list[dict]) -> float:
+    """Total length of the path through `points`, in order -- the sum of the
+    distance between each consecutive pair, not the straight-line distance
+    from first to last point."""
+    return sum(
+        haversine_meters(a["latitude"], a["longitude"], b["latitude"], b["longitude"])
+        for a, b in zip(points, points[1:])
+    )
+
+
 def trip_to_dict(trip: Trip) -> dict:
     start = trip.points[0]["timestamp"]
     end = trip.points[-1]["timestamp"]
     duration_minutes = (datetime.fromisoformat(end) - datetime.fromisoformat(start)).total_seconds() / 60
+    distance_meters = _path_distance_meters(trip.points)
 
     return {
         "start": start,
         "end": end,
         "duration_minutes": round(duration_minutes, 1),
         "point_count": len(trip.points),
+        "distance_meters": round(distance_meters, 1),
+        "average_speed_kmh": round(distance_meters / 1000 / (duration_minutes / 60), 2)
+        if duration_minutes > 0
+        else None,
         "is_round_trip": trip.is_round_trip,
         "points": trip.points,
     }

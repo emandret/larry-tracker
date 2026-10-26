@@ -1,0 +1,827 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Where's Larry?</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css"
+    />
+    <style>
+      :root {
+        --bg: #0f172a;
+        --bg-raised: #1e293b;
+        --border: #334155;
+        --text: #e2e8f0;
+        --text-muted: #94a3b8;
+        --accent: #60a5fa;
+        --hover: #1e293b;
+        --selected: #1e3a5f;
+        --attribution-bg: rgba(15, 23, 42, 0.8);
+        --marker-stroke: #e2e8f0;
+      }
+      :root[data-theme="light"] {
+        --bg: #f8fafc;
+        --bg-raised: #ffffff;
+        --border: #e2e8f0;
+        --text: #1e293b;
+        --text-muted: #64748b;
+        --accent: #2563eb;
+        --hover: #f1f5f9;
+        --selected: #dbeafe;
+        --attribution-bg: rgba(255, 255, 255, 0.8);
+        --marker-stroke: #1e293b;
+      }
+
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        font-family: system-ui, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      #app {
+        display: flex;
+        height: 100%;
+      }
+
+      #map {
+        flex: 1 1 auto;
+        height: 100%;
+        background: var(--bg);
+      }
+
+      #sidebar {
+        width: 300px;
+        flex: 0 0 auto;
+        height: 100%;
+        overflow-y: auto;
+        border-right: 1px solid var(--border);
+        background: var(--bg);
+      }
+      #sidebar h1 {
+        font-size: 16px;
+        margin: 0;
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--border);
+        background: var(--bg-raised);
+        color: var(--text);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .header-controls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      #theme-toggle {
+        font-size: 11px;
+        padding: 3px 8px;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        background: var(--bg);
+        color: var(--text);
+        cursor: pointer;
+      }
+      #theme-toggle:hover {
+        background: var(--hover);
+      }
+      #conn-indicator {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #64748b;
+        flex: 0 0 auto;
+        cursor: default;
+        position: relative;
+      }
+      #conn-indicator.live {
+        background: #22c55e;
+      }
+      /* Invisible padding so the 8px dot is easier to hover. */
+      #conn-indicator::after {
+        content: "";
+        position: absolute;
+        inset: -6px;
+      }
+
+      /* Styled like the Leaflet point popup (see .point-popup). */
+      #conn-tooltip {
+        position: fixed;
+        z-index: 1000;
+        min-width: 200px;
+        max-width: 320px;
+        padding: 10px 14px;
+        border-radius: 12px;
+        background: var(--bg-raised);
+        color: var(--text);
+        font-size: 13px;
+        font-weight: normal;
+        line-height: 1.5;
+        box-shadow: 0 3px 14px rgba(0, 0, 0, 0.4);
+        pointer-events: none;
+      }
+      /* Pointer arrow; --arrow-x is set from JS so it sits under the dot. */
+      #conn-tooltip::before {
+        content: "";
+        position: absolute;
+        top: -6px;
+        left: var(--arrow-x, 50%);
+        width: 12px;
+        height: 12px;
+        margin-left: -6px;
+        background: var(--bg-raised);
+        transform: rotate(45deg);
+      }
+      #conn-tooltip .conn-title {
+        font-weight: 600;
+      }
+      #conn-tooltip .conn-title.live {
+        color: #22c55e;
+      }
+      #conn-tooltip .conn-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      #conn-tooltip .conn-label {
+        color: var(--text-muted);
+      }
+      #conn-tooltip .conn-value {
+        text-align: right;
+        overflow-wrap: anywhere;
+      }
+
+      #trip-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .trip-item {
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--border);
+        cursor: pointer;
+      }
+      .trip-item:hover {
+        background: var(--hover);
+      }
+      .trip-item.selected {
+        background: var(--selected);
+      }
+      .trip-item .trip-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 8px;
+      }
+      .trip-item .range {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text);
+      }
+      .trip-item .meta {
+        font-size: 12px;
+        color: var(--text-muted);
+        margin-top: 2px;
+      }
+      .delete-trip-btn {
+        flex: 0 0 auto;
+        border: none;
+        background: none;
+        color: var(--text-muted);
+        font-size: 15px;
+        line-height: 1;
+        cursor: pointer;
+        padding: 0 2px;
+      }
+      .delete-trip-btn:hover {
+        color: #f87171;
+      }
+      .badge {
+        display: inline-block;
+        font-size: 11px;
+        padding: 1px 6px;
+        border-radius: 10px;
+        margin-top: 4px;
+        color: white;
+      }
+      .badge.round-trip {
+        background: #16a34a;
+      }
+      .badge.one-way {
+        background: #d97706;
+      }
+      .badge.unknown {
+        background: #6b7280;
+      }
+
+      #empty-state {
+        padding: 16px;
+        color: var(--text-muted);
+        font-size: 14px;
+      }
+
+      .point-popup {
+        font-size: 13px;
+        line-height: 1.5;
+        min-width: 160px;
+        color: var(--text);
+      }
+      .point-popup .popup-actions {
+        margin-top: 6px;
+        display: flex;
+        gap: 6px;
+      }
+      .point-popup button {
+        font-size: 12px;
+        padding: 3px 8px;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        background: var(--bg-raised);
+        color: var(--text);
+        cursor: pointer;
+      }
+      .point-popup button:hover {
+        background: var(--hover);
+        border-color: var(--accent);
+      }
+      .point-popup button.danger:hover {
+        background: #450a0a;
+        border-color: #f87171;
+      }
+      .point-popup .edit-form label {
+        display: block;
+        font-size: 12px;
+        margin-top: 4px;
+        color: var(--text-muted);
+      }
+      .point-popup .edit-form input {
+        width: 100%;
+        box-sizing: border-box;
+        background: var(--bg);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+      }
+
+      /* Leaflet chrome -- restyled to match the dark basemap/UI. */
+      .leaflet-popup-content-wrapper,
+      .leaflet-popup-tip {
+        background: var(--bg-raised);
+        color: var(--text);
+      }
+      .leaflet-container a.leaflet-popup-close-button {
+        color: var(--text-muted);
+      }
+      .leaflet-control-zoom a {
+        background: var(--bg-raised);
+        color: var(--text);
+        border-color: var(--border) !important;
+      }
+      .leaflet-control-zoom a:hover {
+        background: var(--hover);
+      }
+      .leaflet-control-attribution {
+        background: var(--attribution-bg);
+        color: var(--text-muted);
+      }
+      .leaflet-control-attribution a {
+        color: var(--accent);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div id="sidebar">
+        <h1>
+          Where's Larry?
+          <span class="header-controls">
+            <button id="theme-toggle" type="button"></button>
+            <span id="conn-indicator"></span>
+          </span>
+        </h1>
+        <div id="empty-state" hidden>No trips recorded yet.</div>
+        <ul id="trip-list"></ul>
+      </div>
+      <div id="conn-tooltip" hidden></div>
+      <div id="map"></div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- maplibre-gl 6.x is ESM-only; the Leaflet plugin needs the 5.x global build. -->
+    <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+    <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js"></script>
+    <script src="https://unpkg.com/@protomaps/basemaps@5.7.2/dist/basemaps.js"></script>
+    <!-- Generated by the proxy from its environment (see proxy/Caddyfile), so
+         this page can stay a plain static file. -->
+    <script src="/config.js"></script>
+    <script>
+      const CARTO_API_KEY = window.LARRY_CONFIG?.cartoApiKey ?? "";
+
+      function getTheme() {
+        return document.documentElement.dataset.theme === "light" ? "light" : "dark";
+      }
+
+      // CARTO's vector tiles use the Protomaps schema, so Protomaps' styles can
+      // draw them. Unlike CARTO's own styles, these include shops, cafes,
+      // transit and other places.
+      function basemapStyle(theme) {
+        const flavor = theme === "light" ? "light" : "dark";
+        return {
+          version: 8,
+          glyphs: "https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf",
+          sprite: `https://protomaps.github.io/basemaps-assets/sprites/v4/${flavor}`,
+          sources: {
+            protomaps: {
+              type: "vector",
+              tiles: [
+                "https://tiles.basemaps.cartocdn.com/vectortiles/carto.streets/v2/{z}/{x}/{y}.mvt",
+              ],
+              maxzoom: 15,
+              // maplibre-gl-leaflet takes the map credit from here, not from
+              // the layer's `attribution` option.
+              attribution:
+                '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a> &copy; <a href="https://protomaps.com">Protomaps</a>',
+            },
+          },
+          layers: basemaps.layers("protomaps", basemaps.namedFlavor(flavor), { lang: "en" }),
+        };
+      }
+
+      // Tag CARTO tile requests with the API key; other hosts are left alone.
+      function withCartoKey(url) {
+        if (!CARTO_API_KEY || !new URL(url).hostname.endsWith("cartocdn.com")) {
+          return { url };
+        }
+        const u = new URL(url);
+        u.searchParams.set("key", CARTO_API_KEY);
+        return { url: u.toString() };
+      }
+
+      function markerStrokeColor() {
+        return getComputedStyle(document.documentElement)
+          .getPropertyValue("--marker-stroke")
+          .trim();
+      }
+
+      let savedTheme = null;
+      try {
+        savedTheme = localStorage.getItem("larry-tracker-theme");
+      } catch {
+        // localStorage unavailable (private browsing, etc.) -- default to dark below
+      }
+      document.documentElement.dataset.theme = savedTheme === "light" ? "light" : "dark";
+
+      const TRIP_COLORS = [
+        "#2563eb",
+        "#dc2626",
+        "#16a34a",
+        "#9333ea",
+        "#ea580c",
+        "#0891b2",
+      ];
+
+      const map = L.map("map").setView([51.513487, -0.020869], 13); // overridden by fitBounds once trips load
+      const basemap = L.maplibreGL({
+        style: basemapStyle(getTheme()),
+        transformRequest: withCartoKey,
+        maxZoom: 19,
+      }).addTo(map);
+
+      const mapLayers = L.layerGroup().addTo(map); // cleared and rebuilt on every refresh
+      let tripLayers = []; // { trip, polyline, markers, listEl }
+
+      function formatTime(iso) {
+        return new Date(iso).toLocaleString([], {
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+      }
+
+      function formatTimePrecise(iso) {
+        return new Date(iso).toLocaleString([], {
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        });
+      }
+
+      function tripMetaText(trip) {
+        const parts = [
+          `${trip.point_count} point(s)`,
+          `${trip.duration_minutes} min`,
+        ];
+        if (trip.distance_meters != null) {
+          parts.push(`${(trip.distance_meters / 1000).toFixed(2)} km`);
+        }
+        if (trip.average_speed_kmh != null) {
+          parts.push(`${trip.average_speed_kmh} km/h avg`);
+        }
+        return parts.join(" \u00b7 ");
+      }
+
+      async function patchPoint(id, fields) {
+        const response = await fetch(`/api/locations/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(fields),
+        });
+        if (!response.ok) {
+          alert(`Couldn't save changes (HTTP ${response.status}).`);
+          return false;
+        }
+        return true;
+      }
+
+      async function deletePoint(id) {
+        const response = await fetch(`/api/locations/${id}`, {
+          method: "DELETE",
+        });
+        if (!response.ok) {
+          alert(`Couldn't delete point (HTTP ${response.status}).`);
+          return false;
+        }
+        return true;
+      }
+
+      async function deletePoints(ids) {
+        const response = await fetch("/api/locations/bulk-delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids }),
+        });
+        if (!response.ok) {
+          alert(`Couldn't delete trip (HTTP ${response.status}).`);
+          return false;
+        }
+        return true;
+      }
+
+      function buildPointPopup(point) {
+        const container = document.createElement("div");
+        container.className = "point-popup";
+
+        const view = document.createElement("div");
+        view.innerHTML = `
+                <strong>${formatTimePrecise(point.timestamp)}</strong><br>
+                ${point.latitude.toFixed(6)}, ${point.longitude.toFixed(6)}<br>
+                Accuracy: &plusmn;${point.horizontal_accuracy}m &middot; Confidence: ${point.confidence}
+            `;
+
+        const actions = document.createElement("div");
+        actions.className = "popup-actions";
+        const editBtn = document.createElement("button");
+        editBtn.textContent = "Edit";
+        const deleteBtn = document.createElement("button");
+        deleteBtn.textContent = "Delete";
+        deleteBtn.className = "danger";
+        actions.append(editBtn, deleteBtn);
+
+        const editForm = document.createElement("div");
+        editForm.className = "edit-form";
+        editForm.hidden = true;
+        editForm.innerHTML = `
+                <label>Latitude <input type="number" step="any" class="edit-lat" value="${point.latitude}"></label>
+                <label>Longitude <input type="number" step="any" class="edit-lon" value="${point.longitude}"></label>
+            `;
+        const editActions = document.createElement("div");
+        editActions.className = "popup-actions";
+        const saveBtn = document.createElement("button");
+        saveBtn.textContent = "Save";
+        const cancelBtn = document.createElement("button");
+        cancelBtn.textContent = "Cancel";
+        editActions.append(saveBtn, cancelBtn);
+        editForm.appendChild(editActions);
+
+        function showView() {
+          view.hidden = false;
+          actions.hidden = false;
+          editForm.hidden = true;
+        }
+
+        function showEdit() {
+          view.hidden = true;
+          actions.hidden = true;
+          editForm.hidden = false;
+        }
+
+        editBtn.addEventListener("click", showEdit);
+        cancelBtn.addEventListener("click", showView);
+
+        deleteBtn.addEventListener("click", async () => {
+          if (!confirm("Delete this point?")) return;
+          if (await deletePoint(point.id)) {
+            map.closePopup();
+            loadTrips();
+          }
+        });
+
+        saveBtn.addEventListener("click", async () => {
+          const latitude = parseFloat(
+            editForm.querySelector(".edit-lat").value,
+          );
+          const longitude = parseFloat(
+            editForm.querySelector(".edit-lon").value,
+          );
+          if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
+            alert("Latitude and longitude must be numbers.");
+            return;
+          }
+          if (await patchPoint(point.id, { latitude, longitude })) {
+            map.closePopup();
+            loadTrips();
+          }
+        });
+
+        container.append(view, actions, editForm);
+        return container;
+      }
+
+      function badgeFor(trip) {
+        if (trip.is_round_trip === true) return ["round-trip", "Round trip"];
+        if (trip.is_round_trip === false)
+          return ["one-way", "Did not return home"];
+        return ["unknown", "Trip"];
+      }
+
+      function selectTrip(index) {
+        tripLayers.forEach(({ polyline, markers, listEl }, i) => {
+          const selected = i === index;
+          polyline.setStyle({
+            weight: selected ? 5 : 3,
+            opacity: selected ? 1 : 0.35,
+          });
+          markers.forEach((m) =>
+            m.setStyle({
+              opacity: selected ? 1 : 0.3,
+              fillOpacity: selected ? 0.9 : 0.25,
+            }),
+          );
+          listEl.classList.toggle("selected", selected);
+        });
+
+        const { polyline } = tripLayers[index];
+        map.fitBounds(polyline.getBounds(), { padding: [20, 20] });
+      }
+
+      function renderTrips(data) {
+        const listEl = document.getElementById("trip-list");
+        const emptyEl = document.getElementById("empty-state");
+        listEl.innerHTML = "";
+        tripLayers = [];
+        mapLayers.clearLayers();
+
+        if (data.home) {
+          L.circleMarker([data.home.latitude, data.home.longitude], {
+            radius: 8,
+            color: markerStrokeColor(),
+            fillColor: "#fbbf24",
+            fillOpacity: 1,
+          })
+            .addTo(mapLayers)
+            .bindPopup("Home");
+        }
+
+        if (!data.trips.length) {
+          emptyEl.hidden = false;
+          return;
+        }
+        emptyEl.hidden = true;
+
+        const allBounds = [];
+
+        data.trips.forEach((trip, i) => {
+          const color = TRIP_COLORS[i % TRIP_COLORS.length];
+          const latLngs = trip.points.map((p) => [p.latitude, p.longitude]);
+          const polyline = L.polyline(latLngs, {
+            color,
+            weight: 3,
+            opacity: 0.35,
+          }).addTo(mapLayers);
+          allBounds.push(...latLngs);
+
+          const markers = trip.points.map((p) =>
+            L.circleMarker([p.latitude, p.longitude], {
+              radius: 5,
+              color: markerStrokeColor(),
+              weight: 1,
+              fillColor: color,
+              fillOpacity: 0.25,
+              opacity: 0.3,
+            })
+              .addTo(mapLayers)
+              .bindPopup(() => buildPointPopup(p)),
+          );
+
+          const [badgeClass, badgeText] = badgeFor(trip);
+          const item = document.createElement("li");
+          item.className = "trip-item";
+          item.innerHTML = `
+                    <div class="trip-header">
+                        <div class="range">${formatTime(trip.start)} - ${formatTime(trip.end)}</div>
+                        <button class="delete-trip-btn" title="Delete this trip">&times;</button>
+                    </div>
+                    <div class="meta">${tripMetaText(trip)}</div>
+                    <span class="badge ${badgeClass}">${badgeText}</span>
+                `;
+          item.style.borderLeft = `4px solid ${color}`;
+          item.addEventListener("click", () => selectTrip(i));
+
+          item
+            .querySelector(".delete-trip-btn")
+            .addEventListener("click", async (event) => {
+              event.stopPropagation(); // don't also trigger selectTrip
+              if (!confirm(`Delete this trip? This can't be undone.`)) {
+                return;
+              }
+              const ids = trip.points.map((p) => p.id);
+              if (await deletePoints(ids)) {
+                loadTrips();
+              }
+            });
+
+          listEl.appendChild(item);
+
+          tripLayers.push({ trip, polyline, markers, listEl: item });
+        });
+
+        if (allBounds.length) {
+          map.fitBounds(allBounds, { padding: [20, 20] });
+        }
+      }
+
+      async function loadTrips() {
+        try {
+          const response = await fetch("/api/trips");
+          const data = await response.json();
+          renderTrips(data);
+        } catch (err) {
+          console.error("Failed to load trips", err);
+        }
+      }
+
+      const RECONNECT_DELAY_MS = 5000;
+      const connIndicator = document.getElementById("conn-indicator");
+      const connTooltip = document.getElementById("conn-tooltip");
+      const conn = {
+        status: "connecting", // "connecting" | "live" | "disconnected"
+        url: "",
+        since: null, // when the current status began
+        lastMessageAt: null,
+        messageCount: 0, // updates received on the current connection
+        reconnects: 0, // consecutive failed attempts since last success
+        retryAt: null,
+      };
+      let connTooltipTimer = null;
+
+      function formatAgo(date) {
+        const secs = Math.max(0, Math.round((Date.now() - date) / 1000));
+        if (secs < 60) return `${secs}s ago`;
+        const mins = Math.floor(secs / 60);
+        if (mins < 60) return `${mins}m ${secs % 60}s ago`;
+        return `${Math.floor(mins / 60)}h ${mins % 60}m ago`;
+      }
+
+      function connRow(label, value) {
+        const row = document.createElement("div");
+        row.className = "conn-row";
+        const labelEl = document.createElement("span");
+        labelEl.className = "conn-label";
+        labelEl.textContent = label;
+        const valueEl = document.createElement("span");
+        valueEl.className = "conn-value";
+        valueEl.textContent = value;
+        row.append(labelEl, valueEl);
+        return row;
+      }
+
+      function renderConnTooltip() {
+        const title = document.createElement("div");
+        title.className = `conn-title ${conn.status}`;
+        title.textContent = {
+          connecting: "Connecting...",
+          live: "Live updates on",
+          disconnected: "Disconnected",
+        }[conn.status];
+
+        const rows = [connRow("Server", conn.url)];
+        if (conn.status === "live") {
+          rows.push(
+            connRow(
+              "Connected",
+              `${conn.since.toLocaleTimeString()} (${formatAgo(conn.since)})`,
+            ),
+            connRow("Updates", String(conn.messageCount)),
+            connRow(
+              "Last update",
+              conn.lastMessageAt ? formatAgo(conn.lastMessageAt) : "none yet",
+            ),
+          );
+        } else if (conn.status === "disconnected") {
+          const secs = Math.max(0, Math.ceil((conn.retryAt - Date.now()) / 1000));
+          rows.push(
+            connRow("Since", `${conn.since.toLocaleTimeString()} (${formatAgo(conn.since)})`),
+            connRow("Retrying", secs > 0 ? `in ${secs}s` : "now"),
+          );
+        }
+        if (conn.status !== "live" && conn.reconnects > 0) {
+          rows.push(connRow("Failed attempts", String(conn.reconnects)));
+        }
+
+        connTooltip.replaceChildren(title, ...rows);
+        positionConnTooltip();
+      }
+
+      function positionConnTooltip() {
+        // Below the dot, right-aligned to it, kept inside the viewport.
+        const rect = connIndicator.getBoundingClientRect();
+        const dotCenter = rect.left + rect.width / 2;
+        const left = Math.max(8, rect.right + 14 - connTooltip.offsetWidth);
+        connTooltip.style.left = `${left}px`;
+        connTooltip.style.top = `${rect.bottom + 10}px`;
+        connTooltip.style.setProperty("--arrow-x", `${dotCenter - left}px`);
+      }
+
+      connIndicator.addEventListener("mouseenter", () => {
+        connTooltip.hidden = false;
+        renderConnTooltip();
+        // Keep the relative times ("12s ago", "retrying in 3s") ticking.
+        connTooltipTimer = setInterval(renderConnTooltip, 1000);
+      });
+      connIndicator.addEventListener("mouseleave", () => {
+        connTooltip.hidden = true;
+        clearInterval(connTooltipTimer);
+      });
+
+      function setConnStatus(status) {
+        conn.status = status;
+        conn.since = new Date();
+        connIndicator.classList.toggle("live", status === "live");
+        if (!connTooltip.hidden) renderConnTooltip();
+      }
+
+      function connectWebSocket() {
+        const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+        conn.url = `${protocol}//${location.host}/ws`;
+        conn.retryAt = null;
+        setConnStatus("connecting");
+        const ws = new WebSocket(conn.url);
+        let opened = false;
+
+        ws.addEventListener("open", () => {
+          opened = true;
+          conn.reconnects = 0;
+          conn.messageCount = 0;
+          conn.lastMessageAt = null;
+          setConnStatus("live");
+        });
+        ws.addEventListener("message", () => {
+          conn.messageCount += 1;
+          conn.lastMessageAt = new Date();
+          if (!connTooltip.hidden) renderConnTooltip();
+          loadTrips();
+        });
+        ws.addEventListener("close", () => {
+          if (!opened) conn.reconnects += 1;
+          conn.retryAt = Date.now() + RECONNECT_DELAY_MS;
+          setConnStatus("disconnected");
+          setTimeout(connectWebSocket, RECONNECT_DELAY_MS);
+        });
+        ws.addEventListener("error", () => ws.close());
+      }
+
+      function applyTheme(theme) {
+        document.documentElement.dataset.theme = theme;
+        try {
+          localStorage.setItem("larry-tracker-theme", theme);
+        } catch {
+          // ignore -- theme just won't persist across reloads
+        }
+        document.getElementById("theme-toggle").textContent =
+          theme === "light" ? "Dark mode" : "Light mode";
+        basemap.getMaplibreMap().setStyle(basemapStyle(theme));
+        loadTrips(); // rebuild markers/home pin with the new theme's stroke color
+      }
+
+      document.getElementById("theme-toggle").addEventListener("click", () => {
+        applyTheme(getTheme() === "light" ? "dark" : "light");
+      });
+      document.getElementById("theme-toggle").textContent =
+        getTheme() === "light" ? "Dark mode" : "Light mode";
+
+      loadTrips();
+      connectWebSocket();
+      setInterval(loadTrips, 5 * 60_000); // fallback in case the websocket is ever stuck
+    </script>
+  </body>
+</html>

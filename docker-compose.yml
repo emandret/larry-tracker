@@ -1,8 +1,30 @@
 services:
+  # The only published service: serves the static map page and routes /api/*
+  # and /ws to location-service (see proxy/Caddyfile). location-service stays
+  # private on the compose network.
+  proxy:
+    build: ./proxy
+    ports:
+      - "8000:80"
+    environment:
+      CARTO_API_KEY: ${CARTO_API_KEY:-}
+    depends_on:
+      - location-service
+    # Dev only, see location-service below.
+    develop:
+      watch:
+        # file_server reads from disk on every request, so a sync is enough.
+        - action: sync
+          path: ./proxy/site
+          target: /srv
+        - action: sync+restart
+          path: ./proxy/Caddyfile
+          target: /etc/caddy/Caddyfile
+        - action: rebuild
+          path: ./proxy/Dockerfile
+
   location-service:
     build: ./location-service
-    ports:
-      - "8001:8001"
     environment:
       FINDMY_MODE: ${FINDMY_MODE:-mock}
       DB_PATH: /data/larry.db
@@ -18,12 +40,16 @@ services:
       MAX_HORIZONTAL_ACCURACY_METERS: ${MAX_HORIZONTAL_ACCURACY_METERS:-100}
     volumes:
       - ./data:/data
-
-  ui-service:
-    build: ./ui-service
-    ports:
-      - "8000:8000"
-    environment:
-      LOCATION_SERVICE_URL: http://location-service:8001
-    depends_on:
-      - location-service
+    # Dev only: active under `docker compose watch` / `make dev`, ignored by a
+    # plain `docker compose up`, so prod runs the code baked into the image.
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./location-service/src/location_service
+          target: /app/src/location_service
+          ignore:
+            - __pycache__/
+        - action: rebuild
+          path: ./location-service/pyproject.toml
+        - action: rebuild
+          path: ./location-service/uv.lock

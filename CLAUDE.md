@@ -4,23 +4,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Tracks Larry (a cat) via an AirTag. Two independently-deployable Python
-services, each its own `uv` project, run as separate Docker containers and
-talk to each other over HTTP (not a shared DB file):
+Tracks Larry (a cat) via an AirTag. Two Docker containers:
 
-- `location-service/` -- polls Apple's FindMy network (via
-  [FindMy.py](https://github.com/malmeloo/FindMy.py)) on an interval, stores
-  reports in its own SQLite DB, and exposes them over a REST API.
-- `ui-service/` -- calls location-service's API and renders the path on a
-  Leaflet/OpenStreetMap map. Holds no persistent state of its own.
+- `location-service/` -- a Python `uv` project. Polls Apple's FindMy network
+  (via [FindMy.py](https://github.com/malmeloo/FindMy.py)) on an interval,
+  stores reports in its own SQLite DB, and exposes them over a REST API plus
+  a `/ws` change signal. Not published to the host.
+- `proxy/` -- Caddy, the only published service and the browser's single
+  origin. It serves the static map page (`proxy/site/index.html`, Leaflet +
+  MapLibre), generates `/config.js` with the CARTO key from its environment,
+  and forwards `/api/*` (prefix stripped) and `/ws` to location-service. See
+  `proxy/Caddyfile`. There is no UI backend: the page's JavaScript talks to
+  location-service through the proxy.
 
 See `README.md` for the full setup/usage story (mock vs. live mode, the
 interactive login flow for a real Apple account).
 
 ## Commands
 
-Each service is developed independently (`cd location-service` or
-`cd ui-service` first):
+Python work happens in location-service (`cd location-service` first):
 
 ```shell
 uv sync          # install deps (reads uv.lock)
@@ -29,11 +31,10 @@ uv run ruff check .
 uv run ruff format .
 ```
 
-Run the whole stack: `docker compose up --build` from the repo root (ports
-8000 for the UI, 8001 for location-service's API).
-
-There is no root-level build/test command -- the two services have no shared
-dependencies or tooling.
+Run the whole stack: `docker compose up --build` from the repo root, or
+`make dev` for watch mode. Only the proxy is published, on port 8000: the UI
+at `/`, location-service's API at `/api/*`. `make smoke` checks every route
+of a running stack (`scripts/smoke.sh`); the page itself has no unit tests.
 
 ## Architecture notes
 
@@ -62,6 +63,7 @@ only: the SQLite DB, `account.json` (Apple session -- sensitive), and
 `ani_libs.bin` (anisette provisioning data) all live there. It's
 gitignored; never commit its contents.
 
-**Dockerfiles use `uv.lock`** (copied from each service directory) for
-reproducible installs -- regenerate with `uv lock` after changing a
-`pyproject.toml`, and commit the lockfile.
+**location-service's Dockerfile uses `uv.lock`** for reproducible installs
+-- regenerate with `uv lock` after changing its `pyproject.toml`, and commit
+the lockfile. The proxy image (`proxy/Dockerfile`) just copies the Caddyfile
+and `proxy/site/` into the official Caddy image.

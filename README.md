@@ -8,16 +8,23 @@ network, and renders the resulting path on an OpenStreetMap-based web UI.
 
 Two containers:
 
+- **proxy** (Caddy, `proxy/`) -- the only published service and the
+  browser's single origin. It serves the static map page
+  (`proxy/site/index.html`), generates `/config.js` with the CARTO key from
+  its environment, forwards `/api/*` to location-service with the `/api`
+  prefix stripped, and forwards `/ws` to location-service's WebSocket. See
+  `proxy/Caddyfile`.
 - **location-service** -- polls Apple's FindMy network on an interval,
   stores reports in SQLite, and exposes them over a small REST API
-  (`GET /locations`, `GET /locations/latest`, `GET /trips`).
-- **ui-service** -- calls location-service and renders the path on a
-  Leaflet/OpenStreetMap map.
+  (`GET /locations`, `GET /locations/latest`, `GET /trips`, plus point edits
+  and deletes) and a `/ws` WebSocket that signals when data changes.
 
-They communicate over HTTP (not a shared DB file), so location-service owns
-its SQLite database entirely.
+There is no UI backend: the page's JavaScript talks to location-service
+through the proxy. location-service is not reachable from the host, only
+through the proxy, so its unauthenticated edit/delete routes are not exposed
+directly. It owns its SQLite database entirely.
 
-By default both run against a **mock** FindMy client (`FINDMY_MODE=mock`)
+By default it runs against a **mock** FindMy client (`FINDMY_MODE=mock`)
 that simulates Larry wandering around, so the whole stack runs out of the
 box with no Apple account.
 
@@ -93,12 +100,41 @@ segmentation itself depends on.
 
 ## Running locally
 
+The map uses CARTO's dark basemap, which requires a free API key (CARTO
+stopped serving keyless tiles in 2026). Get one instantly, no approval
+queue, at https://carto.com/basemaps/apikey (free up to 5 million tile
+loads/month), then set it in `.env` next to `docker-compose.yml`:
+
+```
+CARTO_API_KEY=<your key>
+```
+
+This key ends up visible in the page's source -- that's expected, it's a
+rate-limit/quota identifier CARTO's own client-side usage model relies on,
+not a secret -- but keep it out of git by leaving it in the gitignored
+`.env` rather than committing it anywhere.
+
 ```shell
 docker compose up --build
 ```
 
 - UI: http://localhost:8000
-- location-service API: http://localhost:8001
+- location-service API, through the proxy: http://localhost:8000/api/
+  (e.g. http://localhost:8000/api/trips)
+
+A plain `docker compose up` runs the code baked into the images. For
+development, use watch mode instead (`make dev`, or
+`docker compose up --build --watch`), driven by the `develop.watch` rules in
+`docker-compose.yml`:
+
+- The map page (`proxy/site/`) is synced into the proxy; a browser reload
+  picks up the change.
+- `proxy/Caddyfile` changes are synced and Caddy restarts.
+- location-service Python source changes are synced and the service
+  restarts; `pyproject.toml` / `uv.lock` changes rebuild its image.
+
+`make smoke` checks every route of a running stack. Run `make help` for the
+other shortcuts (`prod`, `down`, `logs`, `test`, `lint`, `fmt`).
 
 ## Switching to a real AirTag
 
@@ -130,10 +166,13 @@ working without re-triggering 2FA until Apple invalidates the session.
 
 ## Development
 
-Each service is a standalone `uv` project:
+location-service is a standalone `uv` project:
 
 ```shell
-cd location-service   # or ui-service
+cd location-service
 uv sync
 uv run pytest
 ```
+
+The map page is a single static file, `proxy/site/index.html`, served by
+Caddy; there is nothing to build or install for it.

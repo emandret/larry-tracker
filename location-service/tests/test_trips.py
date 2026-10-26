@@ -113,3 +113,33 @@ def test_trip_to_dict_shape():
     assert result["duration_minutes"] == 30.0
     assert result["is_round_trip"] is None
     assert result["points"] == points
+    assert result["distance_meters"] == 0.0
+    assert result["average_speed_kmh"] == 0.0
+
+
+def test_trip_to_dict_distance_and_speed():
+    t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    points = [
+        make_point(0.0, 0.0, t0),
+        # ~111.2km north, 30 minutes later -- well within the 45min gap
+        # threshold so this stays one trip (unrealistic cat speed, but this
+        # is just checking the distance/speed arithmetic).
+        make_point(1.0, 0.0, t0 + timedelta(minutes=30)),
+    ]
+    trip = compute_trips(points, gap_minutes=45, home=None, home_radius_meters=75)[0]
+
+    result = trip_to_dict(trip)
+
+    assert 110_000 < result["distance_meters"] < 112_000
+    assert 220 < result["average_speed_kmh"] < 224
+
+
+def test_trip_to_dict_average_speed_none_for_zero_duration():
+    t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    points = [make_point(*HOME, t0)]
+    trip = compute_trips(points, gap_minutes=45, home=None, home_radius_meters=75)[0]
+
+    result = trip_to_dict(trip)
+
+    assert result["distance_meters"] == 0.0
+    assert result["average_speed_kmh"] is None

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Awaitable, Callable
 
 from location_service import db
 from location_service.config import Settings
@@ -12,12 +13,18 @@ from location_service.findmy_client import FindMyClient
 logger = logging.getLogger(__name__)
 
 
-async def poll_forever(client: FindMyClient, settings: Settings) -> None:
+async def poll_forever(
+    client: FindMyClient,
+    settings: Settings,
+    on_update: Callable[[], Awaitable[None]] | None = None,
+) -> None:
     while True:
         try:
             points = await client.fetch_reports()
             inserted = db.insert_points(settings.db_path, points)
             logger.info("fetched %d point(s), stored %d new", len(points), inserted)
+            if inserted and on_update:
+                await on_update()
         except Exception:
             logger.exception("poll failed, will retry next interval")
 
